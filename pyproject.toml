@@ -7,6 +7,11 @@ requires-python = ">=3.14"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "bs4>=0.0.2",
+    "datetime>=6.0",
+    "logging>=0.4.9.6",
     "lxml>=6.1.1",
+    "polars>=1.43.2",
+    "pydantic>=2.13.4",
     "requests>=2.34.2",
+    "typing>=3.10.0.0",
 ]
