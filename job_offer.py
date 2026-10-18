@@ -13,28 +13,29 @@ def _names(items: Optional[list[dict]], key: str = "name") -> list[str]:
     return [i[key] for i in (items or []) if i.get(key)]
 
 
-def _find_section(sections: Optional[list[dict]], section_type: str) -> Optional[dict]:
-    """Depth-first search through sections and their subSections."""
+def _index_sections(sections: Optional[list[dict]],
+                    wanted: Optional[set[str]] = None,
+                    _acc: Optional[dict[str, dict]] = None) -> dict[str, dict]:
+    """One dept-fisrt pass; returns {sectionType: first matching section}."""
+    acc = {} if _acc is None else _acc
     for s in sections or []:
-        if s.get("sectionType") == section_type:
-            return s
-        found = _find_section(s.get("subSections"), section_type)
-        if found:
-            return found
-    return None
+        t = s.get("sectionType")
+        if t is not None and (wanted is None or t in wanted):
+            acc.setdefault(t, s)
+        if wanted is not None and acc.keys() >= wanted:
+            return acc
+        _index_sections(s.get("subSections"), wanted, acc)
+    return acc
 
 
-def _section_items(sections: Optional[list[dict]], section_type: str) -> list[str]:
-    """Return the text items of a section, whatever its model type is
-    (bullets / multi-paragraph / dictionary with items)."""
-    section = _find_section(sections, section_type)
-    if not section or not section.get("model"):
+def _items_from_section(section: Optional[dict]) -> list[str]:
+    """Text items of one already-located section (bullets / paragraphs / dictionary)."""
+    model = (section or {}).get("model")
+    if not model:
         return []
-    model = section["model"]
-    if "bullets" in model:
-        return [b for b in model["bullets"] if b]
-    if "paragraphs" in model:
-        return [p for p in model["paragraphs"] if p]
+    for key in ("bullets", "paragraphs"):
+        if key in model:
+            return [x for x in model[key] or [] if x]
     out = []
     for key in ("items", "customItems"):
         for item in model.get(key) or []:
@@ -113,6 +114,9 @@ class JobOffer(BaseModel):
         sections = raw.get("sections") or []
         flags = _flags(raw)
 
+        wanted = {"technogies", "requirements-expected", "requirements-optional", "offered", "benefits"} #TODO maybe unified config?
+        idx = _index_sections(sections, wanted)
+
         contracts = []
         for c in emp.get("typesOfContracts") or []:
             sal = c.get("salary") or {}
@@ -156,11 +160,11 @@ class JobOffer(BaseModel):
             contracts=contracts,
             salary_lower_limit=min(lows) if lows else None,
             salary_upper_limit=max(highs) if highs else None,
-            technologies=_section_items(sections, "technologies"),
-            requirements=_section_items(sections, "requirements-expected"),
-            opt_requirements=_section_items(sections, "requirements-optional"),
-            offered=_section_items(sections, "offered"),
-            benefits=_section_items(sections, "benefits"),
+            technologies=_items_from_section(idx.get("technologies")),
+            requirements=_items_from_section(idx.get("requirements-expected")),
+            opt_requirements=_items_from_section(idx.get("requirements-optional")),
+            offered=_items_from_section(idx.get("offered")),
+            benefits=_items_from_section(idx.get("benefits")),
             many_vacancies=flags.get("many-vacancies", False),
             immediate_employment=flags.get("immediate-employment", False),
             shift_work=flags.get("shift-work", False),

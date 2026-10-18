@@ -77,7 +77,7 @@ def get_all_offers(url_list, header, limit: int | None = None) -> list[JobOffer]
         sleep(2)
         try:
             raw = get_details(url, header)
-            offers.append(JobOffer.from_details_json(raw))
+            offers.append(raw) # TODO JobOffer.from_details_json(raw))
         except (requests.RequestException, ValueError, KeyError, IndexError) as e:
             log.warning("Fetch/structure problem for %s: %s", url, e)
         except ValidationError as e:
