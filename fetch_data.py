@@ -15,7 +15,8 @@ log = log.getLogger(__name__)
 USER_AGENT_CONTACT = "katarz.szczepaniak@gmail.com"
 HEADER = {"User-Agent": f"PortfolioProjectResearch/0.1 (kontakt: {USER_AGENT_CONTACT})"}
 BASE_URL = "https://pracuj.pl/praca"
-TEST_DATA_DIR = pathlib.Path("test_data").mkdir(parents=True, exist_ok=True)
+TEST_DATA_DIR = pathlib.Path("test_data")
+TEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_search_output_json(url: str, header: dict) -> json: 
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     offers = get_all_offers(url_list, header=HEADER, limit=3)
 
 
-    #offers = [JobOffer.from_details_json(d) for d in offers]
+    offers = [JobOffer.from_details_json(d) for d in offers]
 
     for element, idx in zip(offers, range(len(offers))):
         with open(f"test_data/details{idx}.json", "w", encoding="utf-8") as f:

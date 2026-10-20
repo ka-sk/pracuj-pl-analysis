@@ -5,6 +5,9 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------- helpers
 
@@ -114,7 +117,7 @@ class JobOffer(BaseModel):
         sections = raw.get("sections") or []
         flags = _flags(raw)
 
-        wanted = {"technogies", "requirements-expected", "requirements-optional", "offered", "benefits"} #TODO maybe unified config?
+        wanted = {"technologies", "requirements-expected", "requirements-optional", "offered", "benefits"} #TODO maybe unified config?
         idx = _index_sections(sections, wanted)
 
         contracts = []
@@ -135,6 +138,10 @@ class JobOffer(BaseModel):
         highs = [c.salary_to for c in contracts if c.salary_to is not None]
 
         leading = attrs.get("leadingCategory") or {}
+
+        missing = wanted - idx.keys()
+        if missing:
+            logger.debug("Offer %s: sections not found: %s", raw.get("jobOfferWebId"), sorted(missing))
 
         return cls(
             offer_id=raw["jobOfferWebId"],
