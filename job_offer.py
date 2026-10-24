@@ -117,7 +117,7 @@ class JobOffer(BaseModel):
         sections = raw.get("sections") or []
         flags = _flags(raw)
 
-        wanted = {"technologies", "requirements-expected", "requirements-optional", "offered", "benefits"} #TODO maybe unified config?
+        wanted = {"technologies", "requirements-expected", "requirements-optional", "offered", "benefits"}
         idx = _index_sections(sections, wanted)
 
         contracts = []
@@ -177,10 +177,55 @@ class JobOffer(BaseModel):
             shift_work=flags.get("shift-work", False),
         )
 
+'''
+category
+    category id (might be usefull)
+    category parent?
+    set out of category (to remove duplicates)
+remote recruitement
+workplace:
+    region
+    abroadadress
+    is abroad
+    country
+    inlandLocation
+    IDS
+work schedule id
 
-if __name__ == "__main__":
-    import json
-    import sys
+position level id
+type of contract id
+offered do wywalenia
+isDirectlyFromEmployer
+responsibilities
 
-    with open(sys.argv[1], encoding="utf-8") as f:
-        print(JobOffer.from_details_json(json.load(f)).model_dump_json(indent=2))
+what about job offer version?
+Should be gathered to be checked and eventually updated
+
+search in whole poland?
+
+salary
+    "salary_lower_limit": 5550.0, do wywalenia
+    "salary_upper_limit": 6850.0, do wywalenia
+      "contracts": [
+    {
+      "name": "umowa o pracę",
+      "salary_from": 5550.0,
+      "salary_to": 6850.0,
+      "currency": "PLN",
+      "time_unit": null, nie wykryto!!!
+      "is_net": null instead of this salary kind: brutto itd
+optional cv
+      
+### Tabele wymiarów:
+lokacje
+categories
+position level?
+work schedules
+typesofcontract
+work modes
+
+etapy rekrutacji?
+
+    
+
+'''
