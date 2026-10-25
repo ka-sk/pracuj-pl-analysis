@@ -95,7 +95,9 @@ if __name__ == "__main__":
 
     for offer, raw_json, idx in zip(offers, jsons, range(len(offers))):
         offer_path = TEST_DATA_DIR / f"offer{idx}.json"
+        dims_path = TEST_DATA_DIR  / f"dims{idx}.json"
         json_path = TEST_DATA_DIR / f"raw{idx}.json"
-        offer_path.write_text(offer.model_dump_json(indent=2), encoding="utf-8")
+        offer_path.write_text(offer[0].model_dump_json(indent=2), encoding="utf-8")
+        dims_path.write_text(offer[1].model_dump_json(indent=2), encoding="utf-8")
         with open(json_path, 'w') as file:
             json.dump(raw_json, file, indent=4, ensure_ascii=False)

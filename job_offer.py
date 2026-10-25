@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from pydantic import BaseModel, Field
+
+from dimensions import (
+    Dimensions
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -11,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------- helpers
 
-def _names(items: Optional[list[dict]], key: str = "name") -> list[str]:
-    """['name' of each dict] from a list like positionLevels / workModes."""
-    return [i[key] for i in (items or []) if i.get(key)]
+def _collect(add: Callable[[dict], Any], items: Optional[Iterable[dict]]) -> list:
+    """Run `add` (a Dimensions.add_* method) over items; keep the non-None keys."""
+    return [k for k in map(add, items or []) if k is not None]
 
 
 def _index_sections(sections: Optional[list[dict]],
@@ -59,94 +63,95 @@ def _flags(offer: dict) -> dict[str, bool]:
     return flags
 
 
+_SECTIONS = {
+    "technologies", "responsibilities", "requirements-expected",
+    "requirements-optional", "benefits", "recruitment-stages",
+}
+
 # ----------------------------------------------------------------- models
 
 class Contract(BaseModel):
-    name: str
+    contract_type_id: Optional[int] = None
     salary_from: Optional[float] = None
     salary_to: Optional[float] = None
     currency: Optional[str] = None
-    time_unit: Optional[str] = None
-    is_net: Optional[bool] = None
+    time_unit_id: Optional[int] = None
+    salary_kind: Optional[str] = None  # code, e.g. "gross" / "net"
 
+    @classmethod
+    def from_json(cls, c: dict, dims: Dimensions) -> "Contract":
+        sal = c.get("salary") or {}
+        return cls(
+            contract_type_id=dims.add_contract_type(c),
+            salary_from=sal.get("from"),
+            salary_to=sal.get("to"),
+            currency=(sal.get("currency") or {}).get("code"),
+            time_unit_id=dims.add_time_unit(sal.get("timeUnit")),
+            salary_kind=dims.add_salary_kind(sal.get("salaryKind")),
+        )
 
 class JobOffer(BaseModel):
     offer_id: int
     employer_id: int
     language: str
+    offer_version: str
     initial_pub_date: datetime
     last_published: datetime
     expiration_date: datetime
     is_active: bool
-
+ 
     job_title: str
     is_archive: bool
     is_withdrawn: bool
     offer_url: str
     employer_name: str
-
-    categories: list[str] = Field(default_factory=list)
-    leading_category: Optional[str] = None
-    workplaces: list[str] = Field(default_factory=list)
-    position_levels: list[str] = Field(default_factory=list)
+    is_directly_from_employer: Optional[bool] = None
+ 
+    category_ids: list[int] = Field(default_factory=list)
+    leading_category_id: Optional[int] = None
+    location_keys: list[str] = Field(default_factory=list)  # keys of Dimensions.locations
+    position_level_ids: list[int] = Field(default_factory=list)
     entirely_remote_work: bool = False
-    work_schedules: list[str] = Field(default_factory=list)
-    work_modes: list[str] = Field(default_factory=list)
-
+    work_schedule_ids: list[int] = Field(default_factory=list)
+    work_mode_codes: list[str] = Field(default_factory=list)
+ 
+    searching_in_whole_poland: bool = False
+    remote_recruitment: bool = False
+    optional_cv: Optional[bool] = None
+ 
     contracts: list[Contract] = Field(default_factory=list)
-    salary_lower_limit: Optional[float] = None
-    salary_upper_limit: Optional[float] = None
-
+ 
     technologies: list[str] = Field(default_factory=list)
+    responsibilities: list[str] = Field(default_factory=list)
     requirements: list[str] = Field(default_factory=list)
     opt_requirements: list[str] = Field(default_factory=list)
-    offered: list[str] = Field(default_factory=list)
     benefits: list[str] = Field(default_factory=list)
-
+    recruitment_stages: list[str] = Field(default_factory=list)
+ 
     many_vacancies: bool = False
     immediate_employment: bool = False
     shift_work: bool = False
-
+ 
     # ------------------------------------------------------------ parsing
     @classmethod
-    def from_details_json(cls, raw: dict[str, Any]) -> "JobOffer":
-        """Build a JobOffer from the dict returned by get_details()."""
+    def from_details_json(cls, raw: dict[str, Any]) -> tuple["JobOffer", Dimensions]:
+        """Build the offer (ids only) and the dimension rows it refers to, in one pass."""
         pub = raw["publicationDetails"]
         attrs = raw["attributes"]
         emp = attrs.get("employment") or {}
-        sections = raw.get("sections") or []
+        applying = attrs.get("applying") or {}
         flags = _flags(raw)
-
-        wanted = {"technologies", "requirements-expected", "requirements-optional", "offered", "benefits"}
-        idx = _index_sections(sections, wanted)
-
-        contracts = []
-        for c in emp.get("typesOfContracts") or []:
-            sal = c.get("salary") or {}
-            contracts.append(
-                Contract(
-                    name=c["name"],
-                    salary_from=sal.get("from"),
-                    salary_to=sal.get("to"),
-                    # nested shapes below are guesses - check against an offer with salary
-                    currency=(sal.get("currency") or {}).get("code"),
-                    time_unit=(sal.get("timeUnit") or {}).get("name"),
-                    is_net=sal.get("isNet"),
-                )
-            )
-        lows = [c.salary_from for c in contracts if c.salary_from is not None]
-        highs = [c.salary_to for c in contracts if c.salary_to is not None]
-
-        leading = attrs.get("leadingCategory") or {}
-
-        missing = wanted - idx.keys()
-        if missing:
-            logger.debug("Offer %s: sections not found: %s", raw.get("jobOfferWebId"), sorted(missing))
-
-        return cls(
+        idx = _index_sections(raw.get("sections"), _SECTIONS)
+        if idx.keys() != _SECTIONS:
+            logger.debug("Offer %s: sections not found: %s",
+                         raw.get("jobOfferWebId"), sorted(_SECTIONS - idx.keys()))
+        dims = Dimensions()
+ 
+        offer = cls(
             offer_id=raw["jobOfferWebId"],
             employer_id=raw["employerId"],
             language=(raw.get("jobOfferLanguage") or {}).get("isoCode", ""),
+            offer_version=pub["jobOfferVersion"],
             initial_pub_date=pub["dateOfInitialPublicationUtc"],
             last_published=pub["lastPublishedUtc"],
             expiration_date=pub["expirationDateUtc"],
@@ -156,76 +161,27 @@ class JobOffer(BaseModel):
             is_withdrawn=attrs["isWithdrawn"],
             offer_url=attrs["offerAbsoluteUrl"],
             employer_name=attrs["displayEmployerName"],
-            categories=_names(attrs.get("categories")),
-            leading_category=leading.get("name"),
-            workplaces=[w["displayAddress"] for w in attrs.get("workplaces") or []
-                        if w.get("displayAddress")],
-            position_levels=_names(emp.get("positionLevels")),
+            is_directly_from_employer=raw.get("isDirectlyFromEmployer"),
+            category_ids=list(dict.fromkeys(_collect(dims.add_category, attrs.get("categories")))),
+            leading_category_id=dims.add_category(attrs.get("leadingCategory")),
+            location_keys=list(dict.fromkeys(_collect(dims.add_location, attrs.get("workplaces")))),
+            position_level_ids=_collect(dims.add_position_level, emp.get("positionLevels")),
             entirely_remote_work=emp.get("entirelyRemoteWork", False),
-            work_schedules=_names(emp.get("workSchedules")),
-            work_modes=_names(emp.get("workModes")),
-            contracts=contracts,
-            salary_lower_limit=min(lows) if lows else None,
-            salary_upper_limit=max(highs) if highs else None,
+            work_schedule_ids=_collect(dims.add_work_schedule, emp.get("workSchedules")),
+            work_mode_codes=_collect(dims.add_work_mode, emp.get("workModes")),
+            searching_in_whole_poland=bool(
+                ((raw.get("productAddons") or {}).get("searchingInWholePoland") or {}).get("enabled")),
+            remote_recruitment=bool(applying.get("remoteRecruitment")),
+            optional_cv=(applying.get("strefa") or applying.get("eRecruiter") or {}).get("optionalCv"),
+            contracts=[Contract.from_json(c, dims) for c in emp.get("typesOfContracts") or []],
             technologies=_items_from_section(idx.get("technologies")),
+            responsibilities=_items_from_section(idx.get("responsibilities")),
             requirements=_items_from_section(idx.get("requirements-expected")),
             opt_requirements=_items_from_section(idx.get("requirements-optional")),
-            offered=_items_from_section(idx.get("offered")),
             benefits=_items_from_section(idx.get("benefits")),
+            recruitment_stages=_items_from_section(idx.get("recruitment-stages")),
             many_vacancies=flags.get("many-vacancies", False),
             immediate_employment=flags.get("immediate-employment", False),
             shift_work=flags.get("shift-work", False),
         )
-
-'''
-category
-    category id (might be usefull)
-    category parent?
-    set out of category (to remove duplicates)
-remote recruitement
-workplace:
-    region
-    abroadadress
-    is abroad
-    country
-    inlandLocation
-    IDS
-work schedule id
-
-position level id
-type of contract id
-offered do wywalenia
-isDirectlyFromEmployer
-responsibilities
-
-what about job offer version?
-Should be gathered to be checked and eventually updated
-
-search in whole poland?
-
-salary
-    "salary_lower_limit": 5550.0, do wywalenia
-    "salary_upper_limit": 6850.0, do wywalenia
-      "contracts": [
-    {
-      "name": "umowa o pracę",
-      "salary_from": 5550.0,
-      "salary_to": 6850.0,
-      "currency": "PLN",
-      "time_unit": null, nie wykryto!!!
-      "is_net": null instead of this salary kind: brutto itd
-optional cv
-      
-### Tabele wymiarów:
-lokacje
-categories
-position level?
-work schedules
-typesofcontract
-work modes
-
-etapy rekrutacji?
-
-    
-
-'''
+        return offer, dims
