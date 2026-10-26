@@ -89,15 +89,35 @@ if __name__ == "__main__":
     url_list = get_all_search_output(BASE_URL, HEADER, limit_pages=1)
     (TEST_DATA_DIR / "text.txt").write_text("\n".join(url_list) + "\n", encoding="utf-8")
 
-    jsons = get_all_offers(url_list, header=HEADER, limit=10)
+    jsons = get_all_offers(url_list, header=HEADER, limit=50)
 
     offers = [JobOffer.from_details_json(d) for d in jsons]
 
+    requirements_path = TEST_DATA_DIR / f"requirements_list.txt"
+    responsibilities_path = TEST_DATA_DIR  / f"responsibilities_list.txt"
+
+    resp_body = []
+    req_body = []
+
+
     for offer, raw_json, idx in zip(offers, jsons, range(len(offers))):
+
+        # save to seperate files
         offer_path = TEST_DATA_DIR / f"offer{idx}.json"
         dims_path = TEST_DATA_DIR  / f"dims{idx}.json"
         json_path = TEST_DATA_DIR / f"raw{idx}.json"
         offer_path.write_text(offer[0].model_dump_json(indent=2), encoding="utf-8")
         dims_path.write_text(offer[1].model_dump_json(indent=2), encoding="utf-8")
+
         with open(json_path, 'w') as file:
             json.dump(raw_json, file, indent=4, ensure_ascii=False)
+
+        resp_body += offer[0].responsibilities
+        req_body += offer[0].requirements
+        req_body += offer[0].opt_requirements
+
+    req_body = "\n".join(req_body)
+    resp_body = "\n".join(resp_body)
+    
+    requirements_path.write_text(req_body + "\n", encoding="utf-8")
+    responsibilities_path.write_text(resp_body + "\n", encoding="utf-8")
